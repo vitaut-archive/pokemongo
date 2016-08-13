@@ -255,6 +255,15 @@ def show_as_heatmap(df):
     plt.gca().invert_yaxis()
     plt.show()
 
+def get_dps(pokemon, move):
+    """Get Damage Per Second (DPS) adjusted for Same Type Attack Bonus."""
+    t = types.loc[pokemon.Pokemon]
+    m = moves.loc[move]
+    dps = float(m.DPS)
+    if m.Type == t.Type1 or m.Type == t.Type2:
+        dps *= 1.25
+    return round(dps, 1)
+
 def get_moves(kind, moves):
     """Get move data from http://www.pokemongodb.net."""
     r = urllib.urlopen('http://www.pokemongodb.net/2016/04/{}-move.html'.format(kind)).read()
