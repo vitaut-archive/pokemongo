@@ -5,6 +5,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import bs4, re, urllib
 
 import sys
 if sys.version_info[0] < 3: 
@@ -257,7 +258,7 @@ def show_as_heatmap(df):
 def get_moves(kind, moves):
     """Get move data from http://www.pokemongodb.net."""
     r = urllib.urlopen('http://www.pokemongodb.net/2016/04/{}-move.html'.format(kind)).read()
-    soup = BeautifulSoup(r, "html.parser")
+    soup = bs4.BeautifulSoup(r, "html.parser")
     for tr in soup.table.find_all('tr')[2:]:
         move, type, rank, dps, power, seconds, energy = [td.contents[0] for td in tr.find_all('td')]
         move = move.contents[0]
@@ -268,9 +269,15 @@ def get_moves(kind, moves):
         moves.append({'Move': move, 'Type': type, 'Power': power, 'Cooldown': seconds})
 
 if __name__ == '__main__':
+    # Update move data.
     moves = []
     for kind in ['fast', 'charge']:
         get_moves(kind, moves)
     df = pd.DataFrame(moves, columns=('Move', 'Type', 'Power', 'Cooldown')).set_index('Move')
     pd.set_option('display.max_rows', len(df))
-    # TODO: update data
+    with open('pokemongo.py', 'r') as f:
+        content = f.read().decode('utf-8')
+    content = re.sub(r'(moves = read_csv\(""")([^"])*',
+                     r'\1\n' + df.to_string(index_names=False) + '\n', content, 0)
+    with open('pokemongo.py', 'w') as f:
+        f.write(content.encode('utf-8'))
