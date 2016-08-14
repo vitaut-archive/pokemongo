@@ -364,13 +364,14 @@ def show_as_heatmap(df):
     plt.show()
 
 def get_dps(pokemon, move):
-    """Get Damage Per Second (DPS) adjusted for Same Type Attack Bonus."""
+    """Get Damage Per Second (DPS) adjusted for Same Type Attack Bonus
+    and Pokémon attack."""
     t = types.loc[pokemon.Pokemon]
     m = moves.loc[move]
     dps = float(m.DPS)
     if m.Type == t.Type1 or m.Type == t.Type2:
         dps *= 1.25
-    return round(dps, 1)
+    return round(dps * types.loc[pokemon.Pokemon].Attack / 250, 1)
 
 def fetch_bs_html(url):
     """Fetch an HTML page and return it as a BeautifulSoup object."""
