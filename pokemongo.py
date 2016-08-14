@@ -243,7 +243,8 @@ Steel      -       -     -    2    -     -     -    0.5    2
 Fairy      -       -     -    -    -     2     2    0.5    -
 """)
 
-# damage_factor[i, j] is the damage multiplier for attack of type i on Pokémon of type j.
+# damage_factor[i, j] is the damage multiplier for attack of type i on Pokémon
+# of type j.
 damage_factor = pd.concat([data1, data2], axis=1).replace('-', 1.0)
 damage_factor = damage_factor.apply(pd.to_numeric, errors='coerce')
 
@@ -264,29 +265,62 @@ def get_dps(pokemon, move):
         dps *= 1.25
     return round(dps, 1)
 
+def fetch_bs_html(url):
+    """Fetch an HTML page and return it as a BeautifulSoup object."""
+    r = urllib.urlopen(url).read()
+    return bs4.BeautifulSoup(r, "html.parser")    
+
+def get_rows(soup, start_row=1):
+    """Return contents of all table rows in soup."""
+    def first(items):
+        return items[0] if len(items) > 0 else None
+    for tr in soup.table.find_all('tr')[start_row:]:
+        yield [first(td.contents) for td in tr.find_all('td')]
+
+def link2type(link):
+    """Convert a link to Pokémon type."""
+    if link is None:
+        return '-'
+    return re.sub('.*/(.*)-type-.*.html', r'\1', link['href']).title()
+
 def get_moves(kind, moves):
     """Get move data from http://www.pokemongodb.net."""
-    r = urllib.urlopen('http://www.pokemongodb.net/2016/04/{}-move.html'.format(kind)).read()
-    soup = bs4.BeautifulSoup(r, "html.parser")
-    for tr in soup.table.find_all('tr')[2:]:
-        move, type, rank, dps, power, seconds, energy = [td.contents[0] for td in tr.find_all('td')]
+    soup = fetch_bs_html(
+        'http://www.pokemongodb.net/2016/04/{}-move.html'.format(kind))
+    for move, type, _, _, power, seconds, _ in get_rows(soup, 2):
         move = move.contents[0]
         if move.endswith('STAB'):
             continue
-        move = ''.join(move.split(' '))
-        type = re.sub('.*/(.*)-type-moves.html', r'\1', type['href']).title()
-        moves.append({'Move': move, 'Type': type, 'Power': power, 'Cooldown': seconds})
+        move = move.replace(' ', '')
+        moves.append({'Move': move, 'Type': link2type(type),
+                      'Power': power, 'Cooldown': seconds})
+
+def update_data(content, df, name):
+    pd.set_option('display.max_rows', len(df))
+    content = re.sub(r'({} = read_csv\(""")([^"])*'.format(name),
+                     r'\1\n' + df.to_string(index_names=False) + '\n',
+                     content, 0)
 
 if __name__ == '__main__':
-    # Update move data.
+    with open(__file__, 'r') as f:
+        content = f.read().decode('utf-8')
+    # Get move data.
     moves = []
     for kind in ['fast', 'charge']:
         get_moves(kind, moves)
-    df = pd.DataFrame(moves, columns=('Move', 'Type', 'Power', 'Cooldown')).set_index('Move')
-    pd.set_option('display.max_rows', len(df))
-    with open('pokemongo.py', 'r') as f:
-        content = f.read().decode('utf-8')
-    content = re.sub(r'(moves = read_csv\(""")([^"])*',
-                     r'\1\n' + df.to_string(index_names=False) + '\n', content, 0)
-    with open('pokemongo.py', 'w') as f:
+    df = pd.DataFrame(moves, columns=('Move', 'Type', 'Power', 'Cooldown'))
+    update_data(content, df.set_index('Move'), 'moves')
+    # Get Pokémon data
+    soup = fetch_bs_html(
+        'http://www.pokemongodb.net/2016/07/pokemon-by-attack.html')
+    pokemon_list = []
+    for _, _, pokemon, type1, type2, _, attack, _ in get_rows(soup):
+        pokemon = pokemon.contents[0]
+        pokemon_list.append({'Pokemon': pokemon, 'Type1': link2type(type1),
+                             'Type2': link2type(type2), 'Attack': attack})
+    df = pd.DataFrame(pokemon_list,
+                      columns=('Pokemon', 'Type1', 'Type2', 'Attack'))
+    update_data(content, df.set_index('Pokemon'), 'types')
+    # Write data.
+    with open(__file__, 'w') as f:
         f.write(content.encode('utf-8'))
